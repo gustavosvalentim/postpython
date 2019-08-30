@@ -5,7 +5,7 @@ from copy import copy
 
 import requests
 
-from postpython.extractors import extract_headers, extract_body_data, format_object
+from postpython.extractors import extract_headers, extract_body_data, extract_envvars, format_object
 
 
 class CaseInsensitiveDict(dict):
@@ -107,13 +107,45 @@ class PostCollection:
 
 
 class PostRequest:
+
+    """
+    Represents a Postman request.
+
+    Parameters
+    ----------
+    post_python : object
+        Current PostPython instance, it will be used to copy the environment, instead of changing it.
+    data : dict
+        Dict like object containing the request object from a postman collection or folder.
+
+    Attributes
+    ----------
+    name : str
+        Name of the request, it will be transformed to lowercase.
+    post_python : object
+        Current PostPython instance.
+    event : dict
+        Dict like object with the events to be runned before and after the request.
+    request_kwargs : dict
+        Dict like object storing the parameters used to make the request.
+    """
+
+    name = str
+    post_python = None
+    event = dict
+    request_kwargs = dict
+
     def __init__(self, post_python, data):
         self.name = normalize_func_name(data['name'])
         self.post_python = post_python
+        self.event = data['event'] if 'event' in data else None
         self.request_kwargs = dict()
+
         self.request_kwargs['url'] = data['request']['url']['raw']
+
         if data['request']['body']['mode'] == 'raw' and 'raw' in data['request']['body']:
             self.request_kwargs['json'] = extract_body_data(data['request']['body']['raw'])
+            
         self.request_kwargs['headers'] = extract_headers(data['request']['header'])
         self.request_kwargs['method'] = data['request']['method']
 
@@ -122,6 +154,18 @@ class PostRequest:
         new_env.update(kwargs)
         formatted_kwargs = format_object(self.request_kwargs, new_env)
         return requests.request(**formatted_kwargs)
+
+    def __map_envvars(self):
+
+        """If a pre-request script exists in the postman request, it will parse all `pm.environment.set` functions and replace it on the request template with the values. """
+
+        if self.event:
+            pre_request = list(filter(lambda e: e.listen == "prerequest", self.event))
+
+            if len(pre_request) > 0:
+                return extract_envvars(pre_request[0])
+        else:
+            return None
 
 
 class PostFolder:

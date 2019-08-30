@@ -2,7 +2,9 @@ from postpython.core import PostPython
 
 pp = None
 
-with open('/home/gustavo/Desktop/TestCollection.postman_collection.json', encoding="utf-8") as fhandler:
+with open('PATH_TO_YOUR_POSTMAN_COLLECTION', encoding="utf-8") as fhandler:
     pp = PostPython(fhandler.read())
 
-print(pp.testrequest)
+pp.environments.update({"ENVVAR": "ABC"})
+response = pp.testrequest()
+print(response.json())

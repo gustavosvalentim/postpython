@@ -16,6 +16,10 @@ def extract_headers(input_headers):
     return d
 
 
+def extract_envvars(pre_request):
+    pass
+
+
 def format_object(o, key_values):
     if isinstance(o, str):
         try:
