@@ -5,10 +5,13 @@ from copy import copy
 
 import requests
 
-from postpython.extractors import extract_dict_from_raw_headers, extract_dict_from_raw_mode_data, format_object
+from postpython.extractors import extract_headers, extract_body_data, format_object
 
 
 class CaseInsensitiveDict(dict):
+
+    """Dict like object that change all keys to uppercase using key.upper(). """
+
     def __setitem__(self, key, value):
         super(CaseInsensitiveDict, self).__setitem__(key.upper(), value)
 
@@ -22,42 +25,55 @@ class CaseInsensitiveDict(dict):
 
 
 class PostPython:
-    def __init__(self, postman_collection_file_path):
-        with open(postman_collection_file_path, encoding='utf8') as postman_collection_file:
-            self.__postman_collection = json.load(postman_collection_file)
+    
+    """
+    Represents a Postman Collection with folders and requests.
+    
+    Parameters
+    ----------
+    postman_collection_json : str
+        Postman collection JSON in string format.
 
-        self.__folders = {}
+    Attributes
+    ----------
+    __postman_collection_dict : dict
+        dict like object got from the Postman Collection JSON file.
+    __collection : object
+        PostCollection instance.
+    __collection_name : str
+        Postman Collection name
+    environments : dict
+        CaseInsensitiveDict instance containing environment variables used to assign variant values for the requests.
+    """
+
+    __postman_collection_dict = {}
+    __collection = None
+    __collection_name = ""
+    environments = {}
+    
+    def __init__(self, postman_collection_json):
+        self.__postman_collection_dict = json.loads(postman_collection_json)
+        self.__collection_name = self.__postman_collection_dict['info']['name']
+        self.__collection = None
         self.environments = CaseInsensitiveDict()
+
         self.__load()
 
     def __load(self):
+        """Transform the requests in the Postman JSON file in PostRequest instances, it also assign a PostCollection instance to __collection attribute. """
         id_to_request = {}
-        for req in self.__postman_collection['requests']:
-            id_to_request[req['id']] = req
+        requests_list = {}
+        for req in self.__postman_collection_dict['item']:
+            requests_list[normalize_func_name(req['name'])] = PostRequest(self, req)
 
-        for fol in self.__postman_collection['folders']:
-            requests_list = {}
-
-            for req_id in fol['order']:
-                req_data = id_to_request[req_id]
-                requests_list[normalize_func_name(req_data['name'])] = PostRequest(self, req_data)
-
-            col_name = normalize_class_name(fol['name'])
-            self.__folders[col_name] = PostCollection(col_name, requests_list)
+        self.__collection = PostCollection(self.__collection_name, requests_list)
 
     def __getattr__(self, item):
-        if item in self.__folders:
-            return self.__folders[item]
-        else:
-            folders = list(self.__folders.keys())
-            similar_folders = difflib.get_close_matches(item, folders)
-            if len(similar_folders) > 0:
-                similar = similar_folders[0]
-                raise AttributeError('%s folder does not exist in Postman collection.\n'
-                                     'Did you mean %s?' % (item, similar))
-            else:
-                raise AttributeError('%s folder does not exist in Postman collection.\n'
-                                     'Your choices are: %s' % (item, ", ".join(folders)))
+        if hasattr(self.__collection, item):
+            return getattr(self.__collection, item)
+
+    def get_items(self):
+        return self.__collection
 
     def help(self):
         print("Possible methods:")
@@ -95,17 +111,57 @@ class PostRequest:
         self.name = normalize_func_name(data['name'])
         self.post_python = post_python
         self.request_kwargs = dict()
-        self.request_kwargs['url'] = data['url']
-        if data['dataMode'] == 'raw' and 'rawModeData' in data:
-            self.request_kwargs['json'] = extract_dict_from_raw_mode_data(data['rawModeData'])
-        self.request_kwargs['headers'] = extract_dict_from_raw_headers(data['headers'])
-        self.request_kwargs['method'] = data['method']
+        self.request_kwargs['url'] = data['request']['url']['raw']
+        if data['request']['body']['mode'] == 'raw' and 'raw' in data['request']['body']:
+            self.request_kwargs['json'] = extract_body_data(data['request']['body']['raw'])
+        self.request_kwargs['headers'] = extract_headers(data['request']['header'])
+        self.request_kwargs['method'] = data['request']['method']
 
     def __call__(self, *args, **kwargs):
         new_env = copy(self.post_python.environments)
         new_env.update(kwargs)
         formatted_kwargs = format_object(self.request_kwargs, new_env)
         return requests.request(**formatted_kwargs)
+
+
+class PostFolder:
+    
+    """
+    Postman folder, it is used to organize requests.
+
+    Parameters
+    ----------
+    name : str
+        Postman folder name to be identified in the PostCollection object.
+    requests_list : list
+        A list that contains the requests inside of Postman folder. Each item on the list must be an instance of PostRequest
+    
+    Attributes
+    ----------
+    __name : str
+        Postman folder name
+    __requests : list
+        List of PostRequest objects
+    """
+    
+    __name = ""
+    """Folder name. """
+    __requests = []
+    """Requests inside this folder """
+
+    def __init__(self, name, requests_list):
+        self.__name = name
+        self.__requests = requests_list
+
+
+    def __getattr__(self, attr):
+        all_requests = list(map(lambda req: req.name, self.__requests))
+        filter_requests = list(filter(lambda req: req.name == attr, self.__requests))
+        if len(filter_requests) > 0:
+            return filter_requests[0]
+        else:
+            raise ValueError(f"Attribute not found: {attr}, your choices are: {all_requests.join(', ')}")
+
 
 
 def normalize_class_name(string):

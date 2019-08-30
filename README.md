@@ -7,18 +7,16 @@ Postpython is here for your continuous integration.
 - Postman codegen should be applied one by one for each request and it's boring when your API changes,
  but with postpython, you don't need to generate code.
  Just export collection with Postman and use it with Postpython.
-- In code generation, you don't have environment feature anymore and variables are hard coded.
+- Postpython interprets `pm.environment.set()` function, so you can set your environment fine.
+- Postpython will interpret `jsonResponse` variable as the request response in JSON format.
 
 ## Why user Postpython instead of Postman collection runner?
 - With postpython, you write your own script. But collection runner just turns all your requests one by one.
 So with Postpython, you can design more complex test suites.
 
 ## How to install?
-Postpython is available on [PyPI](https://pypi.python.org/pypi?name=postpython&version=0.1.2&:action=display)
- and you can install it using pip:
-```
-$ pip install postpython
-```
+Postpython is available on [Git](https://github.com/gustavosvalentim/postpython)
+
 ## How to use?
 
 Import `PostPython`
@@ -27,7 +25,7 @@ from postpython.core import PostPython
 ```
 Make an instance from `PostPython` and give the address of postman collection file.
 ```$python
-runner = PostPython('/path/to/collection/Postman echo.postman_collection')
+runner = PostPython(YOUR_POSTMAN_COLLECTION_JSON_AS_STRING)
 ```
 Now you can call your request. Folders' name change to upper camel case and requests' name change to lowercase form.
 In this example the name of folder is "Request Methods" and it's change to `RequestMethods` and the name of request was
@@ -83,5 +81,7 @@ runner.RequestMethods.post_request()
 ```
 
 ## Contribution
-Feel free to share your ideas or any problems in [issues](https://github.com/k3rn3l-p4n1c/postpython/issues).
+Feel free to share your ideas or any problems in [issues](https://github.com/gustavosvalentim/postpython/issues).
 Contributions are welcomed. Give postpython a star to encourage me to continue its development.
+
+**This project was forked from [k3rn3l-p4n1c/postpython](https://github.com/k3rn3l-p4n1c/postpython)**

@@ -1,21 +1,17 @@
 import json
 
 
-def extract_dict_from_raw_mode_data(raw):
+def extract_body_data(raw):
     try:
         return json.loads(raw)
     except json.decoder.JSONDecodeError:
         return {}
 
 
-def extract_dict_from_raw_headers(raw):
+def extract_headers(input_headers):
     d = {}
-    for header in raw.split('\n'):
-        try:
-            key, value = header.split(': ')
-            d[key] = value
-        except ValueError:
-            continue
+    for header in input_headers:
+        d[header['key']] = header['value']
 
     return d
 

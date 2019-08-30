@@ -1,7 +1,8 @@
 from postpython.core import PostPython
 
-pp = PostPython('/path/to/collection/Your.postman_collection.json')
-pp.environments.update({'BASE_URL': 'http://127.0.0.1:5000', 'PASSWORD': 'test', 'EMAIL': 'info@example.com'})
-pp.environments.update(pp.User.login().json()['message'])
+pp = None
 
-print(pp.User.get_my_info().json())
+with open('/home/gustavo/Desktop/TestCollection.postman_collection.json', encoding="utf-8") as fhandler:
+    pp = PostPython(fhandler.read())
+
+print(pp.testrequest)
