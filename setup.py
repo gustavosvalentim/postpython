@@ -3,7 +3,7 @@ from distutils.core import setup
 setup(
     name='postpython',
     packages=['postpython'],
-    version='0.1.3',
+    version='0.2.0',
     description='A library to use postman collection in python.',
     author='Bardia Heydari nejad',
     author_email='bardia.heydarinejad@gmail.com',

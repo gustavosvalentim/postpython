@@ -9,6 +9,7 @@ Postpython is here for your continuous integration.
  Just export collection with Postman and use it with Postpython.
 - Postpython interprets `pm.environment.set()` function, so you can set your environment fine.
 - Postpython will interpret `jsonResponse` variable as the request response in JSON format.
+- Postpython have the ability to run your collection requests in a queue, returning only the response from the last request.
 
 ## Why user Postpython instead of Postman collection runner?
 - With postpython, you write your own script. But collection runner just turns all your requests one by one.
@@ -34,6 +35,11 @@ In this example the name of folder is "Request Methods" and it's change to `Requ
 response = runner.RequestMethods.get_request()
 print(response.json())
 print(response.status_code)
+```
+
+You can run your requests in a queue.
+```$python
+response = runner.FolderName.run_in_queue()
 ```
 
 ### Variable assignment
