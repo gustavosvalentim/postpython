@@ -98,7 +98,7 @@ class PostPython:
                 folder_requests = list()
                 for item in req['item']:
                     folder_requests.append(PostRequest(self, item))
-                requests_list[normalize_func_name(req['name'])] = PostFolder(req['name'], folder_requests)
+                requests_list[normalize_class_name(req['name'])] = PostFolder(req['name'], folder_requests)
 
         self.__collection = PostCollection(self.__collection_name, requests_list)
 
