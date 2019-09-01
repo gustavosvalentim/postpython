@@ -5,7 +5,8 @@ from copy import copy
 
 import requests
 
-from postpython.extractors import extract_headers, extract_body_data, extract_envvars, format_object
+from postpython.extractors import extract_headers, extract_body_data, extract_envvars_from_functions, format_object
+from postpython.enqueue import PostRequestQueue
 
 
 class CaseInsensitiveDict(dict):
@@ -27,7 +28,7 @@ class CaseInsensitiveDict(dict):
 class PostPython:
     
     """
-    Represents a Postman Collection with folders and requests.
+    PostPython object storing the postman collection and some metadata from the collection JSON file.
     
     Parameters
     ----------
@@ -41,39 +42,35 @@ class PostPython:
     __collection : object
         PostCollection instance.
     __collection_name : str
-        Postman Collection name
+        Postman collection name
+    __collection_schame : str
+        Postman collection schema
+    __collection_version : int
+        Postman collection version
     environments : dict
         CaseInsensitiveDict instance containing environment variables used to assign variant values for the requests.
     """
 
-    __postman_collection_dict = {}
+    __postman_collection_dict = dict()
     __collection = None
-    __collection_name = ""
-    environments = {}
+    __collection_name = str()
+    __collection_schema = str()
+    __collection_version = int()
+    environments = dict()
     
     def __init__(self, postman_collection_json):
         self.__postman_collection_dict = json.loads(postman_collection_json)
         self.__collection_name = self.__postman_collection_dict['info']['name']
+        self.__collection_schema = self.__postman_collection_dict['info']['schema']
+        self.__collection_version = self.__get_collection_version()
         self.__collection = None
         self.environments = CaseInsensitiveDict()
 
         self.__load()
 
-    def __load(self):
-        """Transform the requests in the Postman JSON file in PostRequest instances, it also assign a PostCollection instance to __collection attribute. """
-        id_to_request = {}
-        requests_list = {}
-        for req in self.__postman_collection_dict['item']:
-            requests_list[normalize_func_name(req['name'])] = PostRequest(self, req)
-
-        self.__collection = PostCollection(self.__collection_name, requests_list)
-
     def __getattr__(self, item):
         if hasattr(self.__collection, item):
             return getattr(self.__collection, item)
-
-    def get_items(self):
-        return self.__collection
 
     def help(self):
         print("Possible methods:")
@@ -81,8 +78,54 @@ class PostPython:
             print()
             fol.help()
 
+    def __get_collection_version(self):
+        pattern = r'(v\d+\.\d+\.\d+)'
+        search = re.search(pattern, self.__collection_schema)
+
+        if search:
+            return search.group()[1:]
+
+    def __load(self):
+        """Transform the requests in the Postman JSON file in PostRequest instances, it also assign a PostCollection instance to __collection attribute. """
+        id_to_request = dict()
+        requests_list = dict()
+        folders = dict()
+        for req in self.__postman_collection_dict['item']:
+            if not 'item' in req:
+                requests_list[normalize_func_name(req['name'])] = PostRequest(self, req)
+            else:
+                folders[req['name']] = PostFolder(req['name'], req['item'])
+
+        self.__collection = PostCollection(self.__collection_name, requests_list)
+
+    def run_in_queue(self):
+        return PostRequestQueue(self.__collection.get_requests())()
+
 
 class PostCollection:
+
+    """
+    Postman collection object storing folders and requests.
+
+    Parameters
+    ----------
+    name : str
+        Name of the collection to be set on the instance
+    requests_list : list
+        List of the requests. Each request must be an instance of PostRequest.
+
+    Attributes
+    ----------
+    name : str
+        Name of the collection
+    __requests : list
+        List containing the collection requests
+    """
+
+    name = ''
+    __requests = {}
+    __iter_index = 0
+
     def __init__(self, name, requests_list):
         self.name = name
         self.__requests = requests_list
@@ -101,9 +144,28 @@ class PostCollection:
                 raise AttributeError('%s request does not exist in %s folder.\n'
                                      'Your choices are: %s' % (item, self.name, ", ".join(post_requests)))
 
+    def __len__(self):
+        return len(self.__requests)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.__iter_index == len(self.__requests):
+            raise StopIteration
+        else:
+            cur_key = list(self.__requests.keys())[self.__iter_index]
+            cur_request = self.__requests[cur_key]
+            self.__iter_index += 1
+
+            return cur_request
+
     def help(self):
         for req in self.__requests.keys():
             print("post_python.{COLLECTION}.{REQUEST}()".format(COLLECTION=self.name, REQUEST=req))
+
+    def get_requests(self):
+        return list(map(lambda k, v: v, [*self.__requests.keys()], [*self.__requests.values()]))
 
 
 class PostRequest:
@@ -151,21 +213,35 @@ class PostRequest:
 
     def __call__(self, *args, **kwargs):
         new_env = copy(self.post_python.environments)
+
+        scripts = self.__map_scripts()
+        
+        if 'prerequest' in scripts:
+            new_env.update(scripts['prerequest'])
+
         new_env.update(kwargs)
         formatted_kwargs = format_object(self.request_kwargs, new_env)
-        return requests.request(**formatted_kwargs)
+        response = requests.request(**formatted_kwargs)
 
-    def __map_envvars(self):
+        if 'test' in scripts:
+            self.post_python.environments.update(self.__map_scripts(response)['test'])
+
+        return response
+
+    def __map_scripts(self, response = None):
 
         """If a pre-request script exists in the postman request, it will parse all `pm.environment.set` functions and replace it on the request template with the values. """
 
-        if self.event:
-            pre_request = list(filter(lambda e: e.listen == "prerequest", self.event))
+        scripts_results = dict()
 
-            if len(pre_request) > 0:
-                return extract_envvars(pre_request[0])
-        else:
-            return None
+        if self.event:
+            scripts = list(map(lambda e: {'type': e['listen'], 'payload': e['script']['exec']}, self.event))
+
+            if len(scripts) > 0:
+                for script in scripts:
+                    scripts_results[script['type']] = extract_envvars_from_functions(script['payload'], response = response if response else None)
+        
+        return scripts_results
 
 
 class PostFolder:
@@ -197,7 +273,6 @@ class PostFolder:
         self.__name = name
         self.__requests = requests_list
 
-
     def __getattr__(self, attr):
         all_requests = list(map(lambda req: req.name, self.__requests))
         filter_requests = list(filter(lambda req: req.name == attr, self.__requests))
@@ -205,7 +280,6 @@ class PostFolder:
             return filter_requests[0]
         else:
             raise ValueError(f"Attribute not found: {attr}, your choices are: {all_requests.join(', ')}")
-
 
 
 def normalize_class_name(string):
