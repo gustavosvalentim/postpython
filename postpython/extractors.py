@@ -9,8 +9,8 @@ POSTMAN_FUNCTIONS_MAPPING = {
 
 POSTMAN_VARS_MAPPING =  {
     'jsonData': {
-        'regex_pattern': r'jsonData\.(\w+|\_)',
-        'sub': r'jsonData\.'
+        'regex_pattern': r'jsonResponse\.(\w+|\_)',
+        'sub': r'jsonResponse\.'
     }
 }
 

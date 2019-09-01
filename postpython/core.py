@@ -73,10 +73,11 @@ class PostPython:
             return getattr(self.__collection, item)
 
     def help(self):
-        print("Possible methods:")
-        for fol in self.__folders.values():
-            print()
-            fol.help()
+        print("[*] Possible methods are:")
+        for req in self.__collection.get_requests():
+            print(req.name, end=', ')
+        print()
+        self.__collection.help()
 
     def __get_collection_version(self):
         pattern = r'(v\d+\.\d+\.\d+)'
@@ -94,12 +95,18 @@ class PostPython:
             if not 'item' in req:
                 requests_list[normalize_func_name(req['name'])] = PostRequest(self, req)
             else:
-                folders[req['name']] = PostFolder(req['name'], req['item'])
+                folder_requests = list()
+                for item in req['item']:
+                    folder_requests.append(PostRequest(self, item))
+                requests_list[normalize_func_name(req['name'])] = PostFolder(req['name'], folder_requests)
 
         self.__collection = PostCollection(self.__collection_name, requests_list)
 
     def run_in_queue(self):
-        return PostRequestQueue(self.__collection.get_requests())()
+        queue_requests = list(filter(lambda x: isinstance(x, PostRequest), self.__collection.get_requests()))
+        queue = PostRequestQueue(queue_requests)
+
+        return queue()
 
 
 class PostCollection:
@@ -133,6 +140,8 @@ class PostCollection:
     def __getattr__(self, item):
         if item in self.__requests:
             return self.__requests[item]
+        if item == 'name':
+            return self.name
         else:
             post_requests = list(self.__requests.keys())
             similar_requests = difflib.get_close_matches(item, post_requests, cutoff=0.0)
@@ -162,7 +171,7 @@ class PostCollection:
 
     def help(self):
         for req in self.__requests.keys():
-            print("post_python.{COLLECTION}.{REQUEST}()".format(COLLECTION=self.name, REQUEST=req))
+            print("post_python.{REQUEST}()".format(REQUEST=req))
 
     def get_requests(self):
         return list(map(lambda k, v: v, [*self.__requests.keys()], [*self.__requests.values()]))
@@ -235,7 +244,8 @@ class PostRequest:
         scripts_results = dict()
 
         if self.event:
-            scripts = list(map(lambda e: {'type': e['listen'], 'payload': e['script']['exec']}, self.event))
+            scripts = list(map(
+                lambda e: {'type': e['listen'], 'payload': e['script']['exec']}, self.event))
 
             if len(scripts) > 0:
                 for script in scripts:
@@ -274,12 +284,19 @@ class PostFolder:
         self.__requests = requests_list
 
     def __getattr__(self, attr):
+        if attr == 'name':
+            return self.__name
+
         all_requests = list(map(lambda req: req.name, self.__requests))
         filter_requests = list(filter(lambda req: req.name == attr, self.__requests))
         if len(filter_requests) > 0:
             return filter_requests[0]
         else:
-            raise ValueError(f"Attribute not found: {attr}, your choices are: {all_requests.join(', ')}")
+            raise ValueError(f"Attribute not found: {attr}, your choices are: {', '.join(all_requests)}")
+
+    def __call__(self):
+        queue = PostRequestQueue(self.__requests)
+        return queue()
 
 
 def normalize_class_name(string):

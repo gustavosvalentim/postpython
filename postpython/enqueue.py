@@ -27,4 +27,7 @@ class PostRequestQueue:
         for i in range(len(self.__requests)):
             response = self.__requests[i]()
             if i == len(self.__requests) - 1:
-                return response.json()
+                return {
+                    'status': response.status_code,
+                    'payload': response.json() if response.headers.get('content-type') == 'application/json' else response.content
+                }
